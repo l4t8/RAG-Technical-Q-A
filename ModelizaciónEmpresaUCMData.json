@@ -1,0 +1,772 @@
+[
+    {
+        "question": "What is the primary mechanism through which the REFRAG framework achieves a reduction in computational complexity for attention?",
+        "answers": {
+            "A": "It eliminates the need for a key-value cache, thus reducing memory requirements.",
+            "B": "It modifies the core LLM architecture to use a linear attention mechanism instead of a quadratic one.",
+            "C": "It changes the scaling factor of attention computation from the number of tokens to the number of chunks.",
+            "D": "It offloads all attention computations to a specialized lightweight encoder model."
+        },
+        "correct_answer": "C",
+        "paper_reference": "REFRAG makes several novel modifications to the decoding process: Instead of using tokens from retrieved passages as input, REFRAG leverages pre-computed, compressed chunk embeddings as approximate representations, feeding these embeddings directly into the decoder. This approach offers three main advantages: 1) It shortens the decoder’s input length, improving token allocation efficiency; 2) It enables reuse of pre-computed chunk embeddings from retrieval, eliminating redundant computation; and 3) It reduces attention computation complexity, which now scales quadratically with the number of chunks rather than the number of tokens in the context."
+    },
+    {
+        "question": "During the continual pre-training phase of REFRAG, what is the specific purpose of the reconstruction task?",
+        "answers": {
+            "A": "To train the decoder to generate more fluent text from compressed inputs.",
+            "B": "To fine-tune the entire model for downstream RAG applications.",
+            "C": "To encourage the model to rely on context memory for reconstruction rather than its internal parametric memory.",
+            "D": "To pre-train the lightweight encoder model from scratch using next-paragraph prediction."
+        },
+        "correct_answer": "C",
+        "paper_reference": "The main objectives are to align the encoder and projection layer so that: 1) encoder can compress k tokens with minimal information loss, and 2) projection layer can effectively map the encoder’s chunk embeddings into the decoder’s token space, allowing the decoder to interpret and accurately reconstruct the original information. The reconstruction task was specifically chosen to encourage the model to rely on context memory rather than its parametric memory during training."
+    },
+    {
+        "question": "What is a key limitation of the CEPE model for long-context applications that REFRAG is designed to overcome?",
+        "answers": {
+            "A": "CEPE requires significant modifications to the LLM's core architecture, making it difficult to adapt.",
+            "B": "CEPE is unsuitable for tasks like multi-turn RAG because it disrupts the causal structure of the context.",
+            "C": "CEPE does not offer any improvement in Time-to-First-Token (TTFT) latency over standard models.",
+            "D": "CEPE is unable to process context lengths beyond 4096 tokens, unlike REFRAG."
+        },
+        "correct_answer": "B",
+        "paper_reference": "CEPE (Yen et al., 2024) employs cross-attention to token embeddings from context tokens, reducing both KV cache memory and attention computations. However, CEPE is limited to prefix context applications, as it disrupts the causal structure of the context, making it unsuitable for tasks such as multi-turn RAG or summarization. Additionally, CEPE does not utilize token compression, resulting in similar or even increased decoding latency."
+    },
+    {
+        "question": "How does REFRAG's performance in multi-turn conversation tasks compare to a fine-tuned LLaMA model (LLAMAFT) in scenarios with long conversational histories?",
+        "answers": {
+            "A": "REFRAG performs similarly to LLAMAFT because both models use the same underlying decoder.",
+            "B": "LLAMAFT consistently outperforms REFRAG due to its ability to process uncompressed conversational history.",
+            "C": "REFRAG's performance degrades significantly as it must compress the entire conversational history into a single vector.",
+            "D": "REFRAG shows improved performance because it avoids truncating crucial conversational history, a problem LLAMAFT faces due to its limited context window."
+        },
+        "correct_answer": "D",
+        "paper_reference": "This improvement is attributable to the limited 4k-token context window of LLAMAFT, which necessitates truncating portions of the conversational history in longer contexts, resulting in the loss of crucial information required to answer subsequent questions. In contrast, our model, trained on the same LLAMA model without extending its effective positional encoding, maintains robust performance even with a large number of passages, owing to the benefits of our compression approach."
+    },
+    {
+        "question": "What fundamental observation about the nature of RAG contexts motivates the REFRAG framework's design?",
+        "answers": {
+            "A": "Retrieved passages in RAG contexts are always highly relevant and semantically similar to the user query.",
+            "B": "RAG contexts are computationally inexpensive to process, but they introduce high memory overhead.",
+            "C": "The attention patterns in RAG contexts are often sparse and block-diagonal due to the diverse and unrelated nature of retrieved chunks.",
+            "D": "Most computations over the RAG context are dedicated to encoding the user query rather than the retrieved documents."
+        },
+        "correct_answer": "C",
+        "paper_reference": "In RAG, much of the LLM context consists of concatenated passages from retrieval, with only a small subset directly relevant to the query. These passages often exhibit low semantic similarity due to diversity or deduplication during re-ranking, leading to block-diagonal attention patterns that differ from those in standard LLM generation tasks. Based on this observation, we argue that most computations over the RAG context during decoding are unnecessary and can be eliminated with minimal impact on performance."
+    },
+    {
+        "question": "Why is curriculum learning considered an essential component of the training methodology for REFRAG?",
+        "answers": {
+            "A": "It is required to fine-tune the model for specific downstream tasks like long document summarization.",
+            "B": "It prevents the model from overfitting on the Slimpajama dataset during the initial pre-training phase.",
+            "C": "It helps the model manage the exponential complexity of possible token combinations when learning to reconstruct from chunk embeddings.",
+            "D": "It allows the model to learn selective compression by gradually introducing the reinforcement learning policy."
+        },
+        "correct_answer": "C",
+        "paper_reference": "As the chunk length k increases, the number of possible token combinations expands exponentially, specifically at a rate of V^k, where V is the vocabulary size. Effectively capturing this diversity within a fixed-length embedding presents a significant challenge. Additionally, reconstructing s = k x L tokens from L chunk embeddings further compounds the difficulty of the task. ... To address the optimization challenge, we propose employing curriculum learning for both tasks."
+    },
+    {
+        "question": "What is the role of the lightweight reinforcement learning (RL) policy within the REFRAG framework?",
+        "answers": {
+            "A": "To decide the optimal compression rate (k) for the entire context based on the query.",
+            "B": "To replace the lightweight encoder with a more dynamic, policy-based compression mechanism.",
+            "C": "To determine on a chunk-by-chunk basis whether to use a compressed embedding or the full token input.",
+            "D": "To re-rank the retrieved passages before they are processed by the encoder."
+        },
+        "correct_answer": "C",
+        "paper_reference": "This \"compress anywhere\" capability is further enhanced by a lightweight reinforcement learning (RL) policy that selectively determines when full chunk token input is necessary and when low-cost, approximate chunk embeddings suffice. As a result, REFRAG minimizes reliance on computationally intensive token embeddings, condensing most chunks for the query in RAG settings."
+    },
+    {
+        "question": "Under what conditions does the REFRAG model achieve its highest acceleration in Time-to-First-Token (TTFT) and throughput?",
+        "answers": {
+            "A": "For short context lengths, where it achieves up to kx acceleration.",
+            "B": "For longer context lengths, where acceleration can reach up to k²x.",
+            "C": "When the cache is disabled, leading to a consistent kx acceleration regardless of context length.",
+            "D": "In multi-turn conversation, where acceleration is independent of context length."
+        },
+        "correct_answer": "B",
+        "paper_reference": "Theoretical analysis (appendix A) shows that for short context lengths, our method achieves up to kx acceleration in TTFT and throughput. For longer context length, acceleration reaches up to k²x for both metrics."
+    },
+    {
+        "question": "How does REFRAG achieve performance gains in RAG tasks under equivalent latency constraints when compared to a fine-tuned LLaMA model?",
+        "answers": {
+            "A": "By using a more powerful decoder model while keeping the latency the same.",
+            "B": "By processing fewer passages than LLaMA but extracting more relevant information from each one.",
+            "C": "By using the latency savings from compression to include more passages and thus more context.",
+            "D": "By caching the results of previous queries to reduce latency for repeated questions."
+        },
+        "correct_answer": "C",
+        "paper_reference": "Under equivalent latency constraints, REFRAG consistently outperform LLaMA on both settings as the saved context can be reinvested to include additional information within the same latency budget."
+    },
+    {
+        "question": "What happens to REFRAG's performance as the compression rate becomes increasingly aggressive, for instance, a rate of 64?",
+        "answers": {
+            "A": "Performance continues to improve linearly with the compression rate due to increased efficiency.",
+            "B": "The model's performance remains competitive and stable, showing no significant degradation.",
+            "C": "Performance begins to diminish, suggesting a practical upper limit to how much compression can be applied effectively.",
+            "D": "The model fails to produce any output due to memory errors caused by over-compression."
+        },
+        "correct_answer": "C",
+        "paper_reference": "We observe a performance regression as the compression rate increases; however, even at a compression rate of 32, our model remains competitive (as shown in table 1). In contrast, a compression rate of 64 appears to be overly aggressive, resulting in diminished performance. These findings suggest a practical limit to the compression rate beyond which the model’s capability is significantly reduced."
+    },
+    {
+        "question": "What property of RAG contexts makes it possible to eliminate much of the decoding computation with little impact on performance?",
+        "answers": {
+            "A": "High semantic similarity among retrieved passages leading to uniform attention",
+            "B": "Global attention that densely connects all tokens across passages",
+            "C": "Block-diagonal attention patterns caused by mostly unrelated chunks in the context",
+            "D": "Dynamic sharing of key–value caches across unrelated prompts"
+        },
+        "correct_answer": "C",
+        "paper_reference": "These passages often exhibit low semantic similarity due to diversity or deduplication during re-ranking, leading to\nblock-diagonal attention patterns that differ from those in standard LLM generation tasks. Based\non this observation, we argue that most computations over the RAG context during decoding are\nunnecessary and can be eliminated with minimal impact on performance."
+    },
+    {
+        "question": "When replacing token sequences with precomputed chunk embeddings in decoding, how does the attention computation scale and why is this helpful?",
+        "answers": {
+            "A": "It becomes linear in the number of tokens, reducing quadratic costs tied to layers",
+            "B": "It remains quadratic in the number of tokens but with a smaller constant factor",
+            "C": "It becomes quadratic in the number of chunks instead of the number of tokens, shortening the effective sequence",
+            "D": "It becomes sublinear due to caching, independent of chunks or tokens"
+        },
+        "correct_answer": "C",
+        "paper_reference": "This approach offers three main advantages: 1) It shortens the decoder’s input length, improving token allocation efficiency;\n2) It enables reuse of pre-computed chunk embeddings from retrieval, eliminating redundant computation; and 3) It reduces\nattention computation complexity, which now scales quadratically with the number of chunks rather than the number of tokens\nin the context."
+    },
+    {
+        "question": "Which statement correctly characterizes the theoretical acceleration in TTFT/throughput as context length varies?",
+        "answers": {
+            "A": "Up to k²× for short contexts and up to k× for long contexts",
+            "B": "Constant for short contexts and logarithmic in k for long contexts",
+            "C": "Up to k× for short contexts and up to k²× for long contexts",
+            "D": "Linear in k for all context lengths"
+        },
+        "correct_answer": "C",
+        "paper_reference": "Theoretical analysis (appendix A) shows that for short context lengths, our method achieves up to k×\nacceleration in TTFT and throughput. For longer context length, acceleration reaches up to k2× for\nboth metrics."
+    },
+    {
+        "question": "How are important context chunks selected for expansion, and what decoding property is preserved during this process?",
+        "answers": {
+            "A": "By random sampling; decoder’s causal masking is removed to allow cross-chunk fusion",
+            "B": "By TF-IDF scores; decoder’s cross-attention is disabled to reduce interference",
+            "C": "By an RL policy using next-paragraph perplexity as a negative reward; the decoder’s autoregressive property is preserved",
+            "D": "By maximum similarity to the query; the decoder operates bidirectionally over the context"
+        },
+        "correct_answer": "C",
+        "paper_reference": "Selective compression REFRAG introduces selective token compression, expanding important context chunks\nuncompressed to improve answer prediction. A RL policy, guided by next-paragraph prediction perplexity as a\nnegative reward, determines which chunks to retain in their original form. The policy network leverages chunk\nembeddings and masking to optimize sequential chunk expansion, thereby preserving the decoder’s autoregressive property."
+    },
+    {
+        "question": "During the reconstruction phase used to align encoder and decoder, which components are trained and what behavior does this encourage?",
+        "answers": {
+            "A": "Only the decoder is trained; it encourages reliance on parametric memory over context",
+            "B": "Both encoder and decoder are trained; it encourages aggressive token dropout",
+            "C": "Only the encoder and projection layer are trained; it encourages reliance on context memory rather than parametric memory",
+            "D": "Only the retriever is trained; it encourages higher lexical overlap among chunks"
+        },
+        "correct_answer": "C",
+        "paper_reference": "Reconstruction task. We input the first s tokens x1:s to the encoder and learn to reconstruct tokens x1:s in the decoder. In this task,\nwe freeze the decoder model and only train the encoder and projection layer. … The reconstruction task was specifically chosen to\nencourage the model to rely on context memory rather than its parametric memory during training."
+    },
+    {
+        "question": "Why is curriculum learning applied in training with chunk embeddings, and how is task difficulty increased?",
+        "answers": {
+            "A": "To stabilize gradients; difficulty is increased by reducing batch size each epoch",
+            "B": "To avoid overfitting; difficulty is increased by adding label noise",
+            "C": "To handle the exponential V^k combination space; difficulty is increased from single-chunk to multi-chunk reconstruction via data mixture scheduling",
+            "D": "To speed up data loading; difficulty is increased by shortening sequences progressively"
+        },
+        "correct_answer": "C",
+        "paper_reference": "As the chunk length k increases, the number of possible token combinations expands exponentially, specifically at a rate of V k, where V is the\nvocabulary size. … For the reconstruction task, training begins with reconstructing a single chunk … Subsequently, the model reconstructs x1:2k …\nTo continuously adjust task difficulty, we vary the data mixture over time, starting with examples dominated by easier tasks and gradually shifting\ntowards those dominated by more difficult tasks."
+    },
+    {
+        "question": "What empirical result is reported when using RL-based selective compression to achieve an effective compression rate of 8?",
+        "answers": {
+            "A": "REFRAG8 consistently outperforms REFRAG16 because it is natively trained at rate 8",
+            "B": "REFRAG8 and REFRAG16 perform identically when matched for compression rate",
+            "C": "REFRAG16 with RL-based selective compression consistently outperforms REFRAG8 without recomputing chunk embeddings",
+            "D": "REFRAG16 underperforms due to over-compression even when expanded to rate 8"
+        },
+        "correct_answer": "C",
+        "paper_reference": "Table 13 demonstrates that REFRAG16 with RL-based selective compression consistently outperforms REFRAG8 across different datasets and context lengths.\nThis finding is particularly surprising, as REFRAG16 achieves a compression rate of 8 without recomputing chunk embeddings, yet still surpasses the\nperformance of REFRAG8."
+    },
+    {
+        "question": "Which limitation prevents CEPE from supporting multi-turn RAG and similar applications efficiently?",
+        "answers": {
+            "A": "It requires encoder–decoder pretraining from scratch for every task",
+            "B": "It relies on dense global attention over all tokens, increasing KV memory",
+            "C": "It disrupts the causal structure and is limited to prefix contexts, while not using token compression",
+            "D": "It cannot cache any intermediate states across turns"
+        },
+        "correct_answer": "C",
+        "paper_reference": "CEPE … is limited to prefix context applications, as it disrupts the causal structure of the context, making it unsuitable for tasks such as multi-turn RAG\nor summarization. Additionally, CEPE does not utilize token compression, resulting in similar or even increased decoding latency."
+    },
+    {
+        "question": "Under equal latency in a weak retriever setting, what passage configuration is compared and what average performance gain is reported?",
+        "answers": {
+            "A": "4 passages vs. 2; 0.71% average gain",
+            "B": "10 passages vs. 10; 5.26% average gain",
+            "C": "8 passages for the compressed approach vs. 1 for the baseline; 1.93% average gain",
+            "D": "1 passage vs. 8; 1.22% average gain"
+        },
+        "correct_answer": "C",
+        "paper_reference": "With a weak retriever setting, at 10 passages, REFRAG improves performance by 0.71% and accelerates TTFT by 5.26× compared to LLaMA. At equal latency\n(8 passages for REFRAG vs. 1 for LLaMA), REFRAG achieves a 1.93% average gain over 16 RAG tasks."
+    },
+    {
+        "question": "How is the effective context window extended beyond the decoder’s native limit?",
+        "answers": {
+            "A": "By switching to a bi-directional decoder with rotary scaling",
+            "B": "By stacking additional attention layers at inference time",
+            "C": "By leveraging chunk embeddings and compression to extend the context size by up to 16×",
+            "D": "By replacing attention with recurrent state updates over tokens"
+        },
+        "correct_answer": "C",
+        "paper_reference": "By exploiting this attention sparsity structure, we demonstrate a 30.85× the time-to-first-token acceleration … In addition, our optimization framework for\nlarge context enables REFRAG to extend the context size of LLMs by 16×. We provide rigorous validation of REFRAG across diverse long-context tasks."
+    },
+    {
+        "question": "Which benefit specifically results from replacing raw context tokens with pre-computed chunk embeddings during decoding?",
+        "answers": {
+            "A": "Eliminating the key–value (KV) cache entirely to achieve constant memory use across context lengths.",
+            "B": "Reducing attention complexity to linear in the total number of original tokens through token pruning.",
+            "C": "Reducing attention computation so complexity scales with the number of chunks (quadratic in chunks) rather than with the number of tokens.",
+            "D": "Avoiding the need for an encoder by learning chunk embeddings directly inside the decoder layers."
+        },
+        "correct_answer": "C",
+        "paper_reference": "Instead of using tokens from retrieved\npassages as input, REFRAG leverages pre-computed, compressed chunk embeddings as approximate represen-\ntations, feeding these embeddings directly into the decoder. This approach offers three main advantages: 1) It\nshortens the decoder’s input length, improving token allocation efficiency; 2) It enables reuse of pre-computed\nchunk embeddings from retrieval, eliminating redundant computation; and 3) It reduces attention computation\ncomplexity, which now scales quadratically with the number of chunks rather than the number of tokens in\nthe context."
+    },
+    {
+        "question": "Under long-context settings, what acceleration does the method theoretically achieve for time-to-first-token and throughput?",
+        "answers": {
+            "A": "Up to log(k)× for TTFT and constant for throughput.",
+            "B": "Up to k× for TTFT but no change in throughput.",
+            "C": "Up to k^2× for both TTFT and throughput.",
+            "D": "Up to sqrt(k)× for TTFT and k× for throughput."
+        },
+        "correct_answer": "C",
+        "paper_reference": "Theoretical analysis (appendix A) shows that for short context lengths, our method achieves up to k×\nacceleration in TTFT and throughput. For longer context length, acceleration reaches up to k2× for both\nmetrics."
+    },
+    {
+        "question": "What capability allows the approach to support multi-turn and agentic applications while still benefiting from compression?",
+        "answers": {
+            "A": "Cross-attention removal that forces all context to be prefix-only.",
+            "B": "A decoder architecture with non-autoregressive generation for context tokens.",
+            "C": "Compression of token chunks at arbitrary positions with an RL policy that decides when to expand selected chunks.",
+            "D": "A retrieval stage that always deduplicates to a single document before decoding."
+        },
+        "correct_answer": "C",
+        "paper_reference": "Unlike prior methods (Yen et al., 2024), REFRAG supports compression of token chunks at\narbitrary positions (see figure 1) while preserving the autoregressive nature of the decoder, thereby supporting\nmulti-turn and agentic applications. This “compress anywhere” capability is further enhanced by a lightweight\nreinforcement learning (RL) policy that selectively determines when full chunk token input is necessary\nand when low-cost, approximate chunk embeddings suffice ."
+    },
+    {
+        "question": "When aligning the encoder and decoder via a reconstruction task, what are the two primary goals for the encoder and projection layer?",
+        "answers": {
+            "A": "To maximize reliance on the decoder’s parametric memory and to minimize use of context memory.",
+            "B": "To map token embeddings into the encoder space and discard positional information entirely.",
+            "C": "To compress k tokens with minimal information loss and project chunk embeddings into the decoder’s token space so the decoder can reconstruct accurately.",
+            "D": "To train only the decoder end-to-end while freezing both the encoder and projection layers."
+        },
+        "correct_answer": "C",
+        "paper_reference": "The main objectives are to align the encoder and projection layer so that: 1) encoder can compress k tokens with\nminimal information loss, and 2) projection layer can effectively map the encoder’s chunk embeddings into the\ndecoder’s token space, allowing the decoder to interpret and accurately reconstruct the original information."
+    },
+    {
+        "question": "What learning signal guides the policy that decides which context chunks should remain uncompressed?",
+        "answers": {
+            "A": "BLEU score measured on generated answers during instruction tuning.",
+            "B": "Wall-clock latency improvements observed during prefill.",
+            "C": "Next-paragraph prediction perplexity used as a negative reward in reinforcement learning.",
+            "D": "A fixed TF-IDF score threshold computed over the retrieval corpus."
+        },
+        "correct_answer": "C",
+        "paper_reference": "Selective compression REFRAG introduces selective token compression, expanding important context chunks\nuncompressed to improve answer prediction. A RL policy, guided by next-paragraph prediction perplexity as\na negative reward, determines which chunks to retain in their original form. The encoder and decoder are\nfine-tuned to handle mixed inputs of compressed and uncompressed chunks."
+    },
+    {
+        "question": "For mid-to-long contexts (length 16,384) and compression rate k=16, what empirical TTFT acceleration with caching was observed?",
+        "answers": {
+            "A": "8.59×",
+            "B": "9.30×",
+            "C": "16.53×",
+            "D": "32.99×"
+        },
+        "correct_answer": "C",
+        "paper_reference": "Empirically, as shown in figure 2, with a context length of 16384 (mid-to-long context), REFRAG\nwith k = 16 achieves 16.53× TTFT acceleration with cache and 8.59× without cache1, both surpassing\nCEPE (2.01× and 1.04×, respectively), while achieving 9.3% performance (measured by perplexity) compared\nto CEPE (table 1)."
+    },
+    {
+        "question": "At equal latency in a strong-retriever setting (8 passages vs. 1), what average change in performance across RAG tasks is achieved?",
+        "answers": {
+            "A": "A 5.26% improvement due to higher passage recall.",
+            "B": "A 0.71% improvement driven by better weak-retriever robustness.",
+            "C": "A 1.22% improvement averaged over 16 tasks.",
+            "D": "No measurable improvement; only latency decreases."
+        },
+        "correct_answer": "C",
+        "paper_reference": "With a strong retriever and a maximum of 10 passages, REFRAG matches LLaMA’s performance while achieving a 5.26×\nspeedup in TTFT. At equal latency (8 passages for REFRAG vs. 1 for LLaMA), REFRAG attains a 1.22%\naverage improvement across 16 RAG tasks. With a weak retriever setting, at 10 passages, REFRAG improves\nperformance by 0.71% and accelerates TTFT by 5.26× compared to LLaMA."
+    },
+    {
+        "question": "When the number of chunk embeddings matches 256 (s/k = 256), how does performance compare to using only the last 256 tokens of the context?",
+        "answers": {
+            "A": "They perform approximately the same due to equal token counts.",
+            "B": "Using the last 256 tokens performs better because no projection is needed.",
+            "C": "Compressed chunk embeddings consistently surpass using the last 256 tokens.",
+            "D": "Both settings fail due to out-of-memory errors on long contexts."
+        },
+        "correct_answer": "C",
+        "paper_reference": "For reference, LLaMA256 uses only the last 256 tokens, matching the number of chunk\nembeddings in REFRAG8 (s/k = 256), yet REFRAG8 consistently surpasses LLaMA256, demonstrating\nthe effectiveness of compressed chunk embeddings."
+    },
+    {
+        "question": "What is the observed effect of increasing the compression rate to 64 on model capability?",
+        "answers": {
+            "A": "Performance continues to improve due to stronger regularization.",
+            "B": "Latency improves but perplexity remains unchanged.",
+            "C": "Performance diminishes, suggesting a practical limit beyond which capability degrades.",
+            "D": "Training diverges unless the encoder is made significantly larger."
+        },
+        "correct_answer": "C",
+        "paper_reference": "We observe a performance regression as\nthe compression rate increases; however, even at a compression rate of 32, our model remains competitive\n(as shown in table 1). In contrast, a compression rate of 64 appears to be overly aggressive, resulting in\ndiminished performance. These findings suggest a practical limit to the compression rate beyond which the\nmodel’s capability is significantly reduced."
+    },
+    {
+        "question": "What mechanism enables extending effective context beyond the original 4k window without modifying the decoder’s positional encoding?",
+        "answers": {
+            "A": "Rotary positional scaling applied during fine-tuning.",
+            "B": "Speculative decoding that predicts future tokens to compress the prompt.",
+            "C": "Using chunk embeddings to extrapolate context length and support broader applications.",
+            "D": "LoRA adapters that re-parameterize the attention projections."
+        },
+        "correct_answer": "C",
+        "paper_reference": "The original Llama-2-7B supports only a 4k context window, whereas our approach enables extrapolation via\nchunk embeddings, extending context and supporting broader applications."
+    },
+    {
+        "question": "How does REFRAG change the scaling of attention computation during decoding when using compressed context?",
+        "answers": {
+            "A": "It makes attention computation linear in the number of tokens regardless of context size.",
+            "B": "It keeps quadratic scaling in the number of tokens but reduces constant factors with caching.",
+            "C": "It makes attention computation scale quadratically with the number of chunks rather than the number of tokens.",
+            "D": "It changes attention complexity to cubic in the number of chunks to better model cross-chunk interactions."
+        },
+        "correct_answer": "C",
+        "paper_reference": "This approach offers three main advantages: 1) It shortens the decoder’s input length, improving token allocation efficiency; 2) It enables reuse of pre-computed chunk embeddings from retrieval, eliminating redundant computation; and 3) It reduces attention computation complexity, which now scales quadratically with the number of chunks rather than the number of tokens in the context."
+    },
+    {
+        "question": "What is the theoretical acceleration in TTFT/throughput that REFRAG can achieve for short versus long contexts as a function of the compression rate k?",
+        "answers": {
+            "A": "Up to k× for long contexts and no improvement for short contexts.",
+            "B": "Up to k× for both short and long contexts.",
+            "C": "Up to k× for short contexts and up to k²× for long contexts.",
+            "D": "Up to √k× for short contexts and linear in k for long contexts."
+        },
+        "correct_answer": "C",
+        "paper_reference": "Theoretical analysis (appendix A) shows that for short context lengths, our method achieves up to k× acceleration in TTFT and throughput.\nFor longer context length, acceleration reaches up to k2× for both metrics."
+    },
+    {
+        "question": "At a context length of 16,384 with compression rate k = 16, what TTFT acceleration does REFRAG achieve with and without cached chunk embeddings?",
+        "answers": {
+            "A": "2.01× with cache and 1.04× without cache.",
+            "B": "8.59× with cache and 16.53× without cache.",
+            "C": "16.53× with cache and 8.59× without cache.",
+            "D": "32.99× with cache and 3.75× without cache."
+        },
+        "correct_answer": "C",
+        "paper_reference": "With a context length of 16384 (mid-to-long context), REFRAG with k = 16 achieves 16.53× TTFT acceleration with cache and 8.59× without cache, both surpassing CEPE (2.01× and 1.04×, respectively), while achieving 9.3% performance (measured by perplexity) compared to CEPE (table 1)."
+    },
+    {
+        "question": "During the reconstruction task used in continual pre-training, which components are updated and what behavior does the task encourage?",
+        "answers": {
+            "A": "The decoder and projection layer are trained, encouraging reliance on parametric memory.",
+            "B": "Only the decoder is trained, encouraging the model to ignore context memory.",
+            "C": "The decoder is frozen while the encoder and projection layer are trained, encouraging reliance on context memory.",
+            "D": "Only the encoder is frozen, encouraging stronger cross-attention to question tokens."
+        },
+        "correct_answer": "C",
+        "paper_reference": "In this task, we freeze the decoder model and only train the encoder and projection layer. The main objectives are to align the encoder and projection layer so that: 1) encoder can compress k tokens with minimal information loss, and 2) projection layer can effectively map the encoder’s chunk embeddings into the decoder’s token space, allowing the decoder to interpret and accurately reconstruct the original information. The reconstruction task was specifically chosen to encourage the model to rely on context memory rather than its parametric memory during training."
+    },
+    {
+        "question": "How is curriculum learning applied to the reconstruction task to address optimization difficulty as k and the number of chunks increase?",
+        "answers": {
+            "A": "By starting with all chunks reconstructed at once and progressively pruning tokens using scheduled sampling.",
+            "B": "By freezing the encoder and gradually unfreezing layers of the decoder based on validation loss.",
+            "C": "By beginning with reconstructing a single chunk and gradually increasing to multiple chunks while adjusting the data mixture toward harder examples over time.",
+            "D": "By replacing ground-truth tokens with model predictions earlier in training to induce robustness to errors."
+        },
+        "correct_answer": "C",
+        "paper_reference": "Curriculum learning incrementally increases task difficulty, enabling the model to gradually and effectively acquire complex skills. For the reconstruction task, training begins with reconstructing a single chunk: the encoder receives one chunk embedding c1 for x1:k and the decoder reconstructs the k tokens using the projected chunk embedding. Subsequently, the model reconstructs x1:2k from two chunk embeddings, and so forth. To continuously adjust task difficulty, we vary the data mixture over time, starting with easier tasks and gradually shifting toward more difficult tasks."
+    },
+    {
+        "question": "What signal drives REFRAG’s RL-based selective compression policy, and which property of the decoder does the policy explicitly preserve?",
+        "answers": {
+            "A": "Policy gradient on token-level cross-entropy, preserving bidirectional attention.",
+            "B": "Entropy regularization on chunk selection, preserving causal masking.",
+            "C": "Next-paragraph prediction perplexity as a negative reward, preserving the decoder’s autoregressive property.",
+            "D": "Contrastive loss between chunks, preserving cross-document attention."
+        },
+        "correct_answer": "C",
+        "paper_reference": "A RL policy, guided by next-paragraph prediction perplexity as a negative reward, determines which chunks to retain in their original form. The encoder and decoder are fine-tuned to handle mixed inputs of compressed and uncompressed chunks. The policy network leverages chunk embeddings and masking to optimize sequential chunk expansion, thereby preserving the decoder’s autoregressive property and enabling flexible placement of compression."
+    },
+    {
+        "question": "Which compression rate delivers a 9.3% average perplexity improvement over CEPE across four datasets according to the reported results?",
+        "answers": {
+            "A": "4",
+            "B": "8",
+            "C": "16",
+            "D": "32"
+        },
+        "correct_answer": "C",
+        "paper_reference": "With a compression rate of 16, we achieve a 9.3% average perplexity improvement over CEPE across four datasets. Meanwhile, our method is 16.53× faster than LLaMA in TTFT and 2.01× faster than CEPE."
+    },
+    {
+        "question": "What is the scale and composition of the continual pre-training corpus used to align the encoder and decoder?",
+        "answers": {
+            "A": "627B tokens from CommonCrawl only with heavy deduplication.",
+            "B": "10B tokens from Wikipedia and StackExchange in equal proportions.",
+            "C": "20B tokens consisting of 50% ArXiv and 50% Book domains from SlimPajama.",
+            "D": "1.1M instruction-tuning examples spanning five domains."
+        },
+        "correct_answer": "C",
+        "paper_reference": "We use the SlimPajama dataset… We only use the Book and ArXiv domains from the dataset since these two domains contain long texts. We sampled from this dataset to construct a 20B token training dataset which contains 50% data from Arxiv and 50% data from Book."
+    },
+    {
+        "question": "Which retriever and corpus specification are used to obtain passages for RAG, including corpus size and passage length constraint?",
+        "answers": {
+            "A": "BM25 over a 100M-passage Wikipedia-only corpus, max 512 words per passage.",
+            "B": "Contriever over a 500M CommonCrawl corpus, no length limit per passage.",
+            "C": "DRAGON+ over a 400M-passage corpus built from Wikipedia and CommonCrawl, with each passage under 200 words.",
+            "D": "ColBERTv2 over a 1B mixed-domain corpus, up to 300 words per passage."
+        },
+        "correct_answer": "C",
+        "paper_reference": "We follow the work of Lin et al. (2024) to use Wikipedia dumps and CommonCrawl dumps to create a retrieval corpus with 400 million passages. Each passage contains less than 200 words. We use the DRAGON+ model as our retriever and use the implementation of Izacard et al. (2023a) to retrieve the K-nearest neighbors."
+    },
+    {
+        "question": "In the strong-retriever setting at equal latency, how are passages allocated between REFRAG and LLaMA, and what average performance change is observed?",
+        "answers": {
+            "A": "Both use 10 passages; REFRAG lags LLaMA by 0.71% on average.",
+            "B": "REPRAG uses 1 passage and LLaMA 8; REFRAG leads by 1.22% on average.",
+            "C": "REFRAG uses 8 passages and LLaMA 1; REFRAG leads by 1.22% on average.",
+            "D": "REFRAG uses 4 passages and LLaMA 4; performance is identical on average."
+        },
+        "correct_answer": "C",
+        "paper_reference": "With a strong retriever and a maximum of 10 passages, REFRAG matches LLaMA’s performance while achieving a 5.26× speedup in TTFT.\nAt equal latency (8 passages for REFRAG vs. 1 for LLaMA), REFRAG attains a 1.22% average improvement across 16 RAG tasks."
+    },
+    {
+        "question": "How does the REFRAG framework handle input from retrieved passages to improve decoding efficiency?",
+        "answers": {
+            "A": "It exclusively uses the full token sequences from all retrieved passages as direct input for the decoder.",
+            "B": "It fine-tunes the LLM architecture to better process sparse attention patterns from RAG inputs.",
+            "C": "It utilizes pre-computed, compressed chunk embeddings as approximate representations of the passages, feeding these directly into the decoder.",
+            "D": "It relies on a reinforcement learning policy to re-rank passages and only feeds the top-ranked passage to the decoder."
+        },
+        "correct_answer": "C",
+        "paper_reference": "REFRAG makes several novel modifications to the decoding process: Instead of using tokens from retrieved passages as input, REFRAG leverages pre-computed, compressed chunk embeddings as approximate representations, feeding these embeddings directly into the decoder. This approach offers three main advantages: 1) It shortens the decoder's input length, improving token allocation efficiency; 2) It enables reuse of pre-computed chunk embeddings from retrieval, eliminating redundant computation; and 3) It reduces attention computation complexity, which now scales quadratically with the number of chunks rather than the number of tokens in the context."
+    },
+    {
+        "question": "What is the primary objective of the reconstruction task in the continual pre-training recipe for REFRAG?",
+        "answers": {
+            "A": "To train the decoder to generate more fluent and coherent text.",
+            "B": "To align the encoder and projection layer so the decoder can accurately interpret compressed chunk embeddings and reconstruct the original information.",
+            "C": "To increase the parametric memory of the model for better performance on downstream tasks.",
+            "D": "To reduce the overall perplexity of the model on the pre-training dataset."
+        },
+        "correct_answer": "B",
+        "paper_reference": "Reconstruction task. We input the first s tokens x1:s to the encoder and learn to reconstruct tokens x1:s in the decoder. In this task, we freeze the decoder model and only train the encoder and projection layer. The main objectives are to align the encoder and projection layer so that: 1) encoder can compress k tokens with minimal information loss, and 2) projection layer can effectively map the encoder's chunk embeddings into the decoder's token space, allowing the decoder to interpret and accurately reconstruct the original information."
+    },
+    {
+        "question": "How does REFRAG's selective compression mechanism decide which context chunks to leave uncompressed?",
+        "answers": {
+            "A": "It randomly selects a fixed percentage of chunks to expand.",
+            "B": "It uses a heuristic based on the semantic similarity of chunks to the initial query.",
+            "C": "It employs a reinforcement learning policy that uses next-paragraph prediction perplexity as a negative reward to determine which chunks to expand.",
+            "D": "It expands the chunks that have the highest token count to preserve the most information."
+        },
+        "correct_answer": "C",
+        "paper_reference": "Selective compression REFRAG introduces selective token compression, expanding important context chunks uncompressed to improve answer prediction. A RL policy, guided by next-paragraph prediction perplexity as a negative reward, determines which chunks to retain in their original form. The encoder and decoder are fine-tuned to handle mixed inputs of compressed and uncompressed chunks."
+    },
+    {
+        "question": "What advantage does REFRAG have over models like CEPE in multi-turn RAG or summarization tasks?",
+        "answers": {
+            "A": "REFRAG requires significantly less memory for its key-value cache.",
+            "B": "REFRAG can be applied to prefix context applications without disrupting the causal structure.",
+            "C": "REFRAG is the first to enable pre-computation of chunk embeddings and their use at arbitrary positions within the prompt.",
+            "D": "REFRAG achieves a lower time-to-first-token latency by using a more efficient attention mechanism."
+        },
+        "correct_answer": "C",
+        "paper_reference": "In contrast, our work is the first to enable pre-computation of chunk embeddings and their use at arbitrary positions within the prompt, supporting diverse applications such as RAG and multi-turn conversation. Furthermore, our method learns where to apply compression, allowing for adaptive compression rates at inference time without recomputing chunk embeddings."
+    },
+    {
+        "question": "What was a key finding when comparing the performance of REFRAG with a compression rate of 16 (REFRAG16) against a natively trained model with a compression rate of 8 (REFRAG8)?",
+        "answers": {
+            "A": "REFRAG8 consistently outperformed REFRAG16 with RL-based selective compression.",
+            "B": "Both approaches performed identically, showing that the compression rate is the only factor.",
+            "C": "REFRAG16 using RL-based selective compression to achieve an effective rate of 8 consistently outperformed the natively trained REFRAG8.",
+            "D": "The RL-based policy for REFRAG16 was unable to match the performance of the natively trained REFRAG8."
+        },
+        "correct_answer": "C",
+        "paper_reference": "This raises a natural question: does the former approach outperform the latter? Table 13 demonstrates that REFRAG16 with RL-based selective compression consistently outperforms REFRAG8 across different datasets and context lengths."
+    },
+    {
+        "question": "In the context of Retrieval-Augmented Generation (RAG), what specific structural characteristic of the input context does REFRAG exploit to eliminate unnecessary computations?",
+        "answers": {
+            "A": "The high degree of semantic similarity between all retrieved passages.",
+            "B": "The sequential and autoregressive nature of standard LLM generation tasks.",
+            "C": "The predominantly zero cross-attention between unrelated context chunks from diverse retrieved passages.",
+            "D": "The inherent redundancy created by the initial retrieval process that REFRAG deduplicates."
+        },
+        "correct_answer": "C",
+        "paper_reference": "Due to diversity and other operations such as deduplication, most context chunks during decoding are unrelated, resulting in predominantly zero cross-attention between chunks (see figure 7)."
+    },
+    {
+        "question": "According to the paper's analysis, how does the time-to-first-token (TTFT) latency scale with increasing prompt length in conventional Large Language Models?",
+        "answers": {
+            "A": "It increases linearly.",
+            "B": "It increases quadratically.",
+            "C": "It remains constant regardless of prompt length.",
+            "D": "It increases logarithmically."
+        },
+        "correct_answer": "B",
+        "paper_reference": "Moreover, the time-to-first-token (TTFT) latency increases quadratically, while the time-to-iterative-token (TTIT) latency grows linearly with prompt length (Liu et al., 2025). As a result, LLM inference throughput degrades with larger contexts, limiting their applicability in scenarios demanding high throughput and low latency, such as web-scale discovery."
+    },
+    {
+        "question": "What is the role of curriculum learning in the training process of the REFRAG model?",
+        "answers": {
+            "A": "It is used to fine-tune the model for specific downstream tasks like RAG and summarization.",
+            "B": "It helps the model to gradually acquire complex skills by incrementally increasing the difficulty of the reconstruction and pre-training tasks.",
+            "C": "It is a technique to reduce the memory footprint during training by processing smaller chunks first.",
+            "D": "It is primarily used to train the reinforcement learning policy for selective compression."
+        },
+        "correct_answer": "B",
+        "paper_reference": "To address the optimization challenge, we propose employing curriculum learning for both tasks. Curriculum learning incrementally increases task difficulty, enabling the model to gradually and effectively acquire complex skills. For the reconstruction task, training begins with reconstructing a single chunk: the encoder receives one chunk embedding c1 for x1:k and and the decoder reconstructs the k tokens using the projected chunk embedding e_ink."
+    },
+    {
+        "question": "How did REFRAG perform in a weak retriever scenario compared to a standard LLaMA model when given the same number of retrieved passages?",
+        "answers": {
+            "A": "It underperformed LLaMA because the compressed context lost crucial information from the less relevant passages.",
+            "B": "It matched the performance of LLaMA but with significantly higher latency.",
+            "C": "It outperformed LLaMA because its ability to handle a larger context allowed it to extract more useful information from the noisy retrieved set.",
+            "D": "The performance was identical, as both models struggled equally with the irrelevant passages."
+        },
+        "correct_answer": "C",
+        "paper_reference": "The result demonstrates that under the same number of retrieved passages, we are able to match the performance of LLaMA in the strong retriever setting and even outperform LLaMA under the weak retriever setting. This is because our model enables larger context and hence enables extract more useful information when the retrieved passages are less relevant."
+    },
+    {
+        "question": "What happens to the computational complexity of the attention mechanism in REFRAG due to its design?",
+        "answers": {
+            "A": "It remains quadratic with the number of tokens in the context.",
+            "B": "It becomes linear with the number of tokens in the context.",
+            "C": "It scales quadratically with the number of compressed chunks rather than the number of tokens.",
+            "D": "It is reduced to a constant time complexity through pre-computation."
+        },
+        "correct_answer": "C",
+        "paper_reference": "It reduces attention computation complexity, which now scales quadratically with the number of chunks rather than the number of tokens in the context."
+    },
+    {
+        "question": "What decoding-time attention pattern is induced in RAG contexts due to diversity and deduplication during re-ranking?",
+        "answers": {
+            "A": "Dense cross-attention uniformly linking every chunk to every other chunk.",
+            "B": "Strictly local sliding-window attention across all tokens regardless of chunk boundaries.",
+            "C": "Predominantly zero cross-attention between unrelated chunks, yielding block-diagonal structure.",
+            "D": "Global cross-attention from every chunk to the query with uniform weights."
+        },
+        "correct_answer": "C",
+        "paper_reference": "3) Unusually Structured and Sparse Attention. Due to diversity and other operations such as deduplication, most context chunks during decoding are unrelated,\nresulting in predominantly zero cross-attention between chunks (see figure 7)."
+    },
+    {
+        "question": "Which benefit of feeding pre-computed chunk embeddings directly to the decoder most directly reduces attention computation complexity?",
+        "answers": {
+            "A": "Eliminating positional encodings from the decoder stack.",
+            "B": "Increasing the decoder’s vocabulary size to absorb more context.",
+            "C": "Making attention scale with the number of chunks rather than the number of tokens in the context.",
+            "D": "Replacing self-attention with cross-attention to token embeddings as in CEPE."
+        },
+        "correct_answer": "C",
+        "paper_reference": "REFRAG leverages pre-computed, compressed chunk embeddings as approximate representations, feeding these embeddings directly into the decoder.\nThis approach offers three main advantages: 1) It shortens the decoder’s input length… 2) It enables reuse of pre-computed chunk embeddings… and\n3) It reduces attention computation complexity, which now scales quadratically with the number of chunks rather than the number of tokens in the context."
+    },
+    {
+        "question": "In REFRAG’s architecture, how are chunk embeddings aligned to the decoder’s token embedding space before decoding?",
+        "answers": {
+            "A": "By adding rotary positional encodings to each chunk embedding.",
+            "B": "By averaging chunk embeddings with the query’s token embeddings.",
+            "C": "By projecting each chunk embedding with a learnable layer ϕ to match the decoder’s token embedding size.",
+            "D": "By concatenating raw chunk embeddings directly into the KV cache without transformation."
+        },
+        "correct_answer": "C",
+        "paper_reference": "The encoder model then processes all the chunks to obtain a chunk embedding for each chunk ci = Menc(Ci).\nThis chunk embedding is then projected with a projection layer ϕ to match the size of the token embedding of the decoder model,\necnk_i = ϕ(ci)."
+    },
+    {
+        "question": "According to the theoretical analysis, what is the maximum acceleration achievable for TTFT at longer context lengths with compression rate k?",
+        "answers": {
+            "A": "log k",
+            "B": "√k",
+            "C": "Up to k²",
+            "D": "k/2"
+        },
+        "correct_answer": "C",
+        "paper_reference": "Theoretical analysis (appendix A) shows that for short context lengths, our method achieves up to k× acceleration in TTFT and throughput.\nFor longer context length, acceleration reaches up to k2× for both metrics."
+    },
+    {
+        "question": "During the reconstruction task used to align encoder and decoder, which components are updated?",
+        "answers": {
+            "A": "Only the decoder parameters are trained while the encoder is frozen.",
+            "B": "Only the encoder is trained and the projection layer is discarded.",
+            "C": "The encoder and the projection layer are trained while the decoder is frozen.",
+            "D": "All modules (encoder, decoder, and projection) are jointly fine-tuned."
+        },
+        "correct_answer": "C",
+        "paper_reference": "Reconstruction task. We input the first s tokens x1:s to the encoder and learn to reconstruct tokens x1:s in the decoder.\nIn this task, we freeze the decoder model and only train the encoder and projection layer.\nThe main objectives are to align the encoder and projection layer…"
+    },
+    {
+        "question": "Why is curriculum learning applied to the reconstruction and continual pre-training tasks in REFRAG?",
+        "answers": {
+            "A": "To shrink the model by pruning layers without hurting perplexity.",
+            "B": "To switch from unsupervised to fully supervised training mid-course.",
+            "C": "To address optimization challenges after direct pre-training failed to reduce perplexity by gradually increasing task difficulty.",
+            "D": "To change the retriever’s loss from contrastive to generative."
+        },
+        "correct_answer": "C",
+        "paper_reference": "Counterintuitively, directly continuing pre-training of the decoder to utilize encoder outputs did not reduce perplexity, even for the reconstruction task.\nTo address the optimization challenge, we propose employing curriculum learning for both tasks.\nCurriculum learning incrementally increases task difficulty, enabling the model to gradually and effectively acquire complex skills."
+    },
+    {
+        "question": "What signal guides the reinforcement learning policy when deciding which chunks to expand uncompressed?",
+        "answers": {
+            "A": "Token-level negative log-likelihood on the current output tokens.",
+            "B": "Next-token entropy estimated by the decoder’s softmax.",
+            "C": "Next-paragraph prediction perplexity used as a negative reward.",
+            "D": "Beam search scores averaged over candidate continuations."
+        },
+        "correct_answer": "C",
+        "paper_reference": "Selective compression REFRAG introduces selective token compression, expanding important context chunks uncompressed…\nA RL policy, guided by next-paragraph prediction perplexity as a negative reward, determines which chunks to retain in their original form.\nThe encoder and decoder are fine-tuned to handle mixed inputs of compressed and uncompressed chunks."
+    },
+    {
+        "question": "When targeting an effective compression rate of 8, which approach performed better across datasets and context lengths?",
+        "answers": {
+            "A": "REFRAG8 trained with full compression at rate 8.",
+            "B": "CEPE with heuristic chunk pruning.",
+            "C": "REFRAG16 with RL-based selective compression achieving rate 8 without recomputing embeddings.",
+            "D": "LLaMA-32K using naive truncation to match token count."
+        },
+        "correct_answer": "C",
+        "paper_reference": "This raises a natural question: does the former approach outperform the latter?\nTable 13 demonstrates that REFRAG16 with RL-based selective compression consistently outperforms REFRAG8 across different datasets and context lengths.\nThese results further highlight the effectiveness of the RL-trained policy…"
+    },
+    {
+        "question": "Under a strong retriever, at equal latency, which configuration yields an average 1.22% improvement across 16 RAG tasks?",
+        "answers": {
+            "A": "LLaMA with 8 passages versus REFRAG with 1 passage.",
+            "B": "REFRAG and LLaMA both with 1 passage each.",
+            "C": "REFRAG with 8 passages versus LLaMA with 1 passage.",
+            "D": "LLaMA-32K with 80 passages versus REFRAG with 8 passages."
+        },
+        "correct_answer": "C",
+        "paper_reference": "With a strong retriever and a maximum of 10 passages, REFRAG matches LLaMA’s performance while achieving a 5.26× speedup in TTFT.\nAt equal latency (8 passages for REFRAG vs. 1 for LLaMA), REFRAG attains a 1.22% average improvement across 16 RAG tasks."
+    },
+    {
+        "question": "What limitation of CEPE makes it unsuitable for tasks like multi-turn RAG or summarization?",
+        "answers": {
+            "A": "It requires massive retriever pre-training on billions of documents.",
+            "B": "It compresses tokens into discrete codes that cannot be decoded.",
+            "C": "It is limited to prefix context and disrupts the causal structure of the context.",
+            "D": "It lacks any mechanism to reduce KV-cache memory during decoding."
+        },
+        "correct_answer": "C",
+        "paper_reference": "CEPE (Yen et al., 2024) employs cross-attention to token embeddings from context tokens, reducing both KV cache memory and attention computations.\nHowever, CEPE is limited to prefix context applications, as it disrupts the causal structure of the context,\nmaking it unsuitable for tasks such as multi-turn RAG or summarization."
+    },
+    {
+        "question": "Which benefit does representing retrieved context as projected chunk embeddings provide during decoding?",
+        "answers": {
+            "A": "It increases the size of the key–value cache to preserve more cross-attention states.",
+            "B": "It requires adding new decoder layers to handle compressed inputs.",
+            "C": "It reduces attention computation by letting complexity scale with the number of chunks rather than the number of tokens.",
+            "D": "It prevents the model from handling multi-turn inputs due to loss of causal structure."
+        },
+        "correct_answer": "C",
+        "paper_reference": "This approach offers three main advantages: 1) It\nshortens the decoder’s input length, improving token allocation efficiency; 2) It enables reuse of pre-computed\nchunk embeddings from retrieval, eliminating redundant computation; and 3) It reduces attention computation\ncomplexity, which now scales quadratically with the number of chunks rather than the number of tokens in\nthe context."
+    },
+    {
+        "question": "How does time-to-first-token (TTFT) acceleration scale with the compression rate k for short versus long contexts?",
+        "answers": {
+            "A": "It is constant for short contexts and linear for long contexts.",
+            "B": "It scales quadratically for short contexts and linearly for long contexts.",
+            "C": "It scales up to k× for short contexts and up to k²× for long contexts.",
+            "D": "It scales exponentially for short contexts and logarithmically for long contexts."
+        },
+        "correct_answer": "C",
+        "paper_reference": "Theoretical analysis (appendix A) shows that for short context lengths, our method achieves up to k×\nacceleration in TTFT and throughput. For longer context length, acceleration reaches up to k2× for both\nmetrics. Empirically, as shown in figure 2, with a context length of 16384 (mid-to-long context), REFRAG\nwith k = 16 achieves 16.53× TTFT acceleration with cache and 8.59× without cache1, both surpassing\nCEPE (2.01× and 1.04×, respectively), while achieving 9.3% performance (measured by perplexity) compared\nto CEPE (table 1)."
+    },
+    {
+        "question": "When a fraction p of chunks is expanded (left uncompressed), what is the effective compression rate for the remaining decoder input?",
+        "answers": {
+            "A": "k · (1 − p)",
+            "B": "k / (1 + p)",
+            "C": "k / (1 − p + k p)",
+            "D": "(k − p) / (1 + k)"
+        },
+        "correct_answer": "C",
+        "paper_reference": "Figure 3 presents the performance of various methods for selective compression. We expand p fraction of the\nchunks in the original token space using the RL policy. The effective compression rate k\n\n1−p+kp decreases when\nfewer chunks are compressed (i.e., p increases)."
+    },
+    {
+        "question": "During the reconstruction task used in continual pre-training, which components are trained and which are frozen?",
+        "answers": {
+            "A": "Only the decoder is trained while the encoder and projection are frozen.",
+            "B": "Both the encoder and decoder are trained while the projection is frozen.",
+            "C": "The encoder and projection are trained while the decoder is frozen.",
+            "D": "All components are frozen to regularize the reconstruction objective."
+        },
+        "correct_answer": "C",
+        "paper_reference": "Reconstruction task. We input the first s tokens x1:s to the encoder and learn to reconstruct tokens x1:s in\nthe decoder. In this task, we freeze the decoder model and only train the encoder and projection layer. The\nmain objectives are to align the encoder and projection layer so that: 1) encoder can compress k tokens with\nminimal information loss, and 2) projection layer can effectively map the encoder’s chunk embeddings into the\ndecoder’s token space, allowing the decoder to interpret and accurately reconstruct the original information."
+    },
+    {
+        "question": "Why is curriculum learning employed for REFRAG’s reconstruction and continual pre-training tasks?",
+        "answers": {
+            "A": "To reduce GPU memory by training on progressively smaller vocabularies.",
+            "B": "To permit mixed-precision arithmetic without affecting perplexity.",
+            "C": "To manage the exponential growth in token combinations with larger k and the difficulty of reconstructing s = k×L tokens from only L chunk embeddings.",
+            "D": "To align the encoder with the retriever by distilling dense retrieval scores."
+        },
+        "correct_answer": "C",
+        "paper_reference": "Curriculum learning. The training tasks described in the previous section may seem straightforward, but they\nare inherently complex. As the chunk length k increases, the number of possible token combinations expands\nexponentially, specifically at a rate of V k, where V is the vocabulary size. Additionally, reconstructing s = k×L tokens\nfrom L chunk embeddings further compounds the difficulty of the task."
+    },
+    {
+        "question": "What limitation prevents CEPE from supporting multi-turn RAG or summarization tasks?",
+        "answers": {
+            "A": "It requires much larger encoders than the decoder, causing overfitting.",
+            "B": "It eliminates retrieval and relies solely on parametric memory.",
+            "C": "It disrupts the causal structure of the context and is limited to prefix-only applications.",
+            "D": "It compresses tokens so aggressively that gradients vanish during training."
+        },
+        "correct_answer": "C",
+        "paper_reference": "CEPE (Yen et al., 2024) employs cross-attention to token embeddings from context tokens, reducing both KV cache\nmemory and attention computations. However, CEPE is limited to prefix context applications, as it disrupts the causal\nstructure of the context, making it unsuitable for tasks such as multi-turn RAG or summarization. Additionally, CEPE\ndoes not utilize token compression, resulting in similar or even increased decoding latency."
+    },
+    {
+        "question": "Under a strong retriever with equal latency budgets (8 passages for REFRAG vs. 1 for LLaMA), what performance and latency outcomes are observed?",
+        "answers": {
+            "A": "LLaMA outperforms REFRAG by over 5% but is slower.",
+            "B": "Both models achieve identical accuracy and identical TTFT.",
+            "C": "REFRAG achieves about a 1.22% average accuracy improvement while delivering a 5.26× TTFT speedup.",
+            "D": "REFRAG underperforms LLaMA by 1–2% but matches TTFT."
+        },
+        "correct_answer": "C",
+        "paper_reference": "Figure 4 compares the performance of REFRAG and the LLaMA model under two conditions: 1) an equal\nnumber of retrieved passages, and 2) equal latency, for both strong and weak retriever settings. With a strong\nretriever and a maximum of 10 passages, REFRAG matches LLaMA’s performance while achieving a 5.26×\nspeedup in TTFT. At equal latency (8 passages for REFRAG vs. 1 for LLaMA), REFRAG attains a 1.22%\naverage improvement across 16 RAG tasks."
+    },
+    {
+        "question": "How does REFRAG extend usable context beyond the original 4K window of LLaMA-2-7B?",
+        "answers": {
+            "A": "By modifying positional encodings to 32K during pre-training.",
+            "B": "By swapping the decoder for an encoder–decoder architecture with cross-attention.",
+            "C": "By extrapolating with chunk embeddings, enabling longer contexts without extending the model’s positional encodings.",
+            "D": "By caching KV states from previous prompts across sessions."
+        },
+        "correct_answer": "C",
+        "paper_reference": "Table 2 evaluates o = 2048 with extended context lengths s ∈ {4096, 8192, 16384}. Although our model is\ntrained on s+ o = 6144, both REFRAG8 and REFRAG16 maintain superior performance at longer contexts.\nThe original Llama-2-7B supports only a 4k context window, whereas our approach enables extrapolation via\nchunk embeddings, extending context and supporting broader applications."
+    },
+    {
+        "question": "What data mix and scale are used to construct the continual pre-training corpus for long-context learning?",
+        "answers": {
+            "A": "Only Wikipedia and CommonCrawl totaling 10B tokens.",
+            "B": "StackExchange and GitHub totaling 5B tokens.",
+            "C": "A 20B-token corpus with 50% ArXiv and 50% Book domains from SlimPajama.",
+            "D": "All SlimPajama domains totaling 627B tokens."
+        },
+        "correct_answer": "C",
+        "paper_reference": "Training datasets. We use the Slimpajama dataset (Soboleva et al., 2023), an open source dataset for LLM pre-\ntraining. … We only use the Book and ArXiv domains from the dataset since these two domains contain long\ntexts (Yen et al., 2024). We sampled from this dataset to construct a 20B token training dataset which\ncontains 50% data from Arxiv and 50% data from Book."
+    },
+    {
+        "question": "When matching the number of context signals (256) between methods, how does REFRAG with compression rate 8 compare to a truncated-token baseline?",
+        "answers": {
+            "A": "It performs worse because the chunk embeddings discard token order.",
+            "B": "It performs roughly the same since both expose 256 inputs to the decoder.",
+            "C": "It consistently surpasses a LLaMA baseline using only the last 256 tokens, demonstrating the effectiveness of compressed chunk embeddings.",
+            "D": "It cannot be compared because REFRAG needs at least 512 chunk embeddings."
+        },
+        "correct_answer": "C",
+        "paper_reference": "For reference, LLaMA256 uses only the last 256 tokens, matching the number of chunk\nembeddings in REFRAG8 (s/k = 256), yet REFRAG8 consistently surpasses LLaMA256, demonstrating\nthe effectiveness of compressed chunk embeddings."
+    }
+]

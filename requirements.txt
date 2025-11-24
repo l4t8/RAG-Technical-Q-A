@@ -1,0 +1,9 @@
+langchain==1.1.0
+langchain_chroma==1.0.0
+langchain_community==0.4.1
+langchain_core==1.1.0
+langchain_google_genai==3.2.0
+langchain_huggingface==1.1.0
+langchain_text_splitters==1.0.0
+protobuf==6.33.1
+python-dotenv==1.2.1
