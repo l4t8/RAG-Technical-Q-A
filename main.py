@@ -6,6 +6,9 @@ import json
 import re
 import time
 from typing import List, Optional
+import logging
+
+
 
 # Importamos la librería oficial para listar modelos disponibles
 import google.generativeai as genai
@@ -29,7 +32,7 @@ from langchain_community.retrievers import BM25Retriever
 from langchain.retrievers import EnsembleRetriever
 
 # --- Chains & Prompts ---
-from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.prompts import ChatPromptTemplate, PromptTemplate
 from langchain.chains import create_retrieval_chain
 from langchain.chains.combine_documents import create_stuff_documents_chain
 from langchain_core.runnables import RunnablePassthrough
@@ -38,9 +41,8 @@ load_dotenv()
 
 CHROMA_PATH = "./chroma_db"
 EMBEDDING_MODEL = "all-MiniLM-L6-v2"
-
-# CAMBIO: Usamos 'gemini-pro' como fallback seguro. 
-# Si tu consola muestra que tienes acceso a 'gemini-1.5-flash', cámbialo aquí.
+PDF_PATH = "2509.01092v2.pdf"
+DATASET_PATH = "ModelizaciónEmpresaUCMData.json"
 GEMINI_MODEL = "gemini-2.5-flash" 
 
 class DocumentProcessor:
@@ -94,13 +96,13 @@ class VectorStoreManager:
         else:
             print("No database found to delete.")
 
+
 class RAGPipelines:
     """
     Gestor de pipelines.
     """
     def __init__(self, vector_db, all_chunks, model_name=GEMINI_MODEL):
-        # DEBUG: Confirmar qué modelo se está cargando realmente
-        print(f"--> LOADING MODEL: {model_name}")
+        logging.debug(f"--> LOADING MODEL: {model_name}")
         
         self.llm = ChatGoogleGenerativeAI(model=model_name, temperature=0)
         self.vector_db = vector_db
@@ -121,12 +123,22 @@ class RAGPipelines:
             weights=[0.5, 0.5]
         )
 
+    def _get_document_prompt(self):
+        """
+        This template defines how each retrieved chunk looks inside the {context} variable.
+        We inject the 'source' and 'page' metadata here so the LLM can see it.
+        """
+        return PromptTemplate(
+            input_variables=["page_content", "source", "page"],
+            template="Content: {page_content}\nSource Reference: {source}, Page: {page}\n--------------------------------\n"
+        )
+
     def _get_prompt(self, with_context=True):
         if with_context:
             template = """
             You are a technical assistant analyzing a research paper. Use the following pieces of retrieved context to answer the multiple-choice question.
             
-            CONTEXT:
+            CONTEXT (includes content and source metadata):
             {context}
             
             QUESTION:
@@ -141,34 +153,24 @@ class RAGPipelines:
             INSTRUCTIONS:
             1. Select the correct option (A, B, C, or D).
             2. Explain your reasoning briefly.
-            3. Cite the 'source' (e.g., filename) and 'page' from the metadata provided in the context if possible.
-            4. Return the output in the following JSON format:
+            3. EXTRACT EVIDENCE: Copy the **exact sentence or phrase** from the context that justifies your answer.
+            4. Cite the metadata (Source/Page) associated with that text.
+            
+            Return the output in the following JSON format:
             {{
                 "answer": "A", 
-                "reasoning": "Because...", 
-                "source": "filename: page X"
+                "reasoning": "Because [explanation]...", 
+                "quote": "[Exact text found in the context]",
+                "source": "filename: [source] page [page]"
             }}
             """
         else:
+            # Baseline prompt (No changes needed)
             template = """
             You are a technical assistant. Answer the following multiple-choice question based on your internal knowledge.
-            
-            QUESTION:
-            {question}
-            
-            OPTIONS:
-            A) {option_a}
-            B) {option_b}
-            C) {option_c}
-            D) {option_d}
-            
-            INSTRUCTIONS:
-            1. Select the correct option (A, B, C, or D).
-            2. Return the output in the following JSON format:
-            {{
-                "answer": "A", 
-                "reasoning": "Because..."
-            }}
+            QUESTION: {question}
+            OPTIONS: A) {option_a} B) {option_b} C) {option_c} D) {option_d}
+            INSTRUCTIONS: Return JSON: {{"answer": "A", "reasoning": "..."}}
             """
         return ChatPromptTemplate.from_template(template)
 
@@ -179,17 +181,33 @@ class RAGPipelines:
 
     def get_bm25_pipeline(self):
         prompt = self._get_prompt(with_context=True)
-        chain = create_retrieval_chain(self.bm25_retriever, create_stuff_documents_chain(self.llm, prompt))
+        # We pass the document_prompt to include metadata in the context string
+        combine_docs_chain = create_stuff_documents_chain(
+            self.llm, 
+            prompt, 
+            document_prompt=self._get_document_prompt()
+        )
+        chain = create_retrieval_chain(self.bm25_retriever, combine_docs_chain)
         return chain
 
     def get_dense_pipeline(self):
         prompt = self._get_prompt(with_context=True)
-        chain = create_retrieval_chain(self.dense_retriever, create_stuff_documents_chain(self.llm, prompt))
+        combine_docs_chain = create_stuff_documents_chain(
+            self.llm, 
+            prompt, 
+            document_prompt=self._get_document_prompt()
+        )
+        chain = create_retrieval_chain(self.dense_retriever, combine_docs_chain)
         return chain
     
     def get_hybrid_pipeline(self):
         prompt = self._get_prompt(with_context=True)
-        chain = create_retrieval_chain(self.hybrid_retriever, create_stuff_documents_chain(self.llm, prompt))
+        combine_docs_chain = create_stuff_documents_chain(
+            self.llm, 
+            prompt, 
+            document_prompt=self._get_document_prompt()
+        )
+        chain = create_retrieval_chain(self.hybrid_retriever, combine_docs_chain)
         return chain
 
 class Evaluator:
@@ -203,18 +221,46 @@ class Evaluator:
 
     def _clean_json_response(self, text):
         text = text.replace("```json", "").replace("```", "").strip()
+        
+        # Initialize default structure
+        result = {
+            "answer": "Error", 
+            "reasoning": text, 
+            "source": "None", 
+            "quote": "No quote provided"
+        }
+
         try:
-            return json.loads(text)
+            # Try strict JSON parsing first
+            data = json.loads(text)
+            result.update(data)
         except json.JSONDecodeError:
-            match = re.search(r'"answer":\s*"([A-D])"', text, re.IGNORECASE)
-            if match:
-                return {"answer": match.group(1).upper(), "reasoning": text}
-            return {"answer": "Error", "reasoning": text}
+            # Regex Fallback
+            match_ans = re.search(r'"answer":\s*"([A-D])"', text, re.IGNORECASE)
+            if match_ans: result["answer"] = match_ans.group(1).upper()
+            
+            match_src = re.search(r'"source":\s*"(.*?)"', text, re.IGNORECASE)
+            if match_src: result["source"] = match_src.group(1)
+
+            # Extract the quote using regex (non-greedy)
+            match_qt = re.search(r'"quote":\s*"(.*?)"', text, re.DOTALL)
+            if match_qt: result["quote"] = match_qt.group(1)
+            
+        return result
+
+    def _format_retrieved_metadata(self, docs):
+        if not docs: return "None"
+        refs = []
+        for d in docs:
+            page = d.get("page", "?")
+            source = d.get("source", "unknown").split("/")[-1]
+            refs.append(f"{source}:p{page}")
+        return ", ".join(refs)
 
     def evaluate_pipeline(self, pipeline, pipeline_name, limit=None):
-        print(f"\n==========================================")
-        print(f"--- Evaluating: {pipeline_name} ---")
-        print(f"==========================================")
+        logging.info(f"\n{'='*60}")
+        logging.info(f"--- EVALUATING: {pipeline_name} ---")
+        logging.info(f"{'='*60}")
         
         correct_count = 0
         results = []
@@ -228,12 +274,11 @@ class Evaluator:
                 "option_c": q["answers"]["C"],
                 "option_d": q["answers"]["D"]
             }
-            
             ground_truth = q["correct_answer"].strip().upper()
             start_time = time.time()
             
             try:
-                if pipeline_name == "Baseline":
+                if "Baseline" in pipeline_name:
                     response = pipeline.invoke(input_data)
                     response_text = response.content
                     source_docs = []
@@ -246,83 +291,155 @@ class Evaluator:
                 parsed_res = self._clean_json_response(response_text)
                 predicted_answer = parsed_res.get("answer", "").strip().upper()
                 
+                cited_source = parsed_res.get("source", "-")
+                cited_quote = parsed_res.get("quote", "-")
+
                 is_correct = predicted_answer == ground_truth
-                if is_correct:
-                    correct_count += 1
+                if is_correct: correct_count += 1
                 
                 elapsed = time.time() - start_time
+                retrieved_str = self._format_retrieved_metadata(source_docs)
+                
+                icon = '✅' if is_correct else '❌'
+                logging.info(f"Q{i+1}: {icon} | Pred: {predicted_answer} | Real: {ground_truth} | {elapsed:.2f}s")
+                
+                if "Baseline" not in pipeline_name:
+                    # Print the Quote cleanly
+                    clean_quote = cited_quote.replace("\n", " ")[:100] + "..." if len(cited_quote) > 100 else cited_quote
+                    logging.info(f"   ❝ Quote: \"{clean_quote}\"")
+                    logging.info(f"   📄 Cited:  {cited_source}")
+                    logging.info(f"   🔎 Pool:   [{retrieved_str}]")
+                
                 results.append({
                     "id": i,
                     "pipeline": pipeline_name,
                     "correct": is_correct,
                     "predicted": predicted_answer,
                     "ground_truth": ground_truth,
-                    "latency": elapsed,
-                    "retrieved_metadata": source_docs
+                    "quote": cited_quote,
+                    "source": cited_source,
+                    "latency": elapsed
                 })
                 
-                icon = '✅' if is_correct else '❌'
-                print(f"Q{i+1}: {icon} | Pred: {predicted_answer} | Real: {ground_truth} | {elapsed:.2f}s")
-                
             except Exception as e:
-                print(f"Error en Q{i+1}: {e}")
+                logging.error(f"Error Q{i+1}: {e}")
                 results.append({"id": i, "error": str(e)})
 
         accuracy = (correct_count / len(questions_to_process)) * 100
-        print(f"\n>>> Resultados Finales {pipeline_name}: Accuracy {accuracy:.2f}%")
+        logging.info(f"\n>>> FINAL SCORE [{pipeline_name}]: Accuracy {accuracy:.2f}%")
         return accuracy, results
 
-if __name__ == "__main__":
-    # --- DEBUGGING DE MODELOS ---
-    try:
-        api_key = os.getenv("GOOGLE_API_KEY")
-        if not api_key:
-            print("⚠️ ADVERTENCIA: No se encontró GOOGLE_API_KEY en variables de entorno.")
-        else:
+class RAGExperiment:
+    """
+    Clase principal que orquesta la configuración, chequeo de modelos
+    y ejecución de los experimentos.
+    """
+    def __init__(self, pdf_path=PDF_PATH, dataset_path=DATASET_PATH, model_name=GEMINI_MODEL):
+        self.pdf_path = pdf_path
+        self.dataset_path = dataset_path
+        self.model_name = model_name
+        self.chunks = []
+        self.rag_manager = None
+        
+        # Check inicial de la API
+        self.check_api_and_models()
+
+    def check_api_and_models(self):
+        """Verifica la API Key y muestra los modelos disponibles."""
+        try:
+            api_key = os.getenv("GOOGLE_API_KEY")
+            if not api_key:
+                print("⚠️ ADVERTENCIA: No se encontró GOOGLE_API_KEY en variables de entorno.")
+                return
+
             genai.configure(api_key=api_key)
-            print("\n--- CONSULTANDO MODELOS DISPONIBLES EN TU CUENTA ---")
-            print("(Si esto falla, tu API Key podría estar mal configurada)")
             available_models = []
             for m in genai.list_models():
                 if 'generateContent' in m.supported_generation_methods:
-                    # Limpiamos el prefijo 'models/' para mostrar el nombre corto
                     short_name = m.name.replace("models/", "")
                     available_models.append(short_name)
-                    print(f" - {short_name}")
-            print("----------------------------------------------------\n")
             
-            # Verificación automática
-            if GEMINI_MODEL not in available_models and f"models/{GEMINI_MODEL}" not in [m.name for m in genai.list_models()]:
-                print(f"⚠️ ADVERTENCIA: El modelo configurado '{GEMINI_MODEL}' NO aparece en tu lista.")
-                print("   Por favor, cambia la variable GEMINI_MODEL en el código por uno de la lista de arriba.\n")
+            if self.model_name not in available_models and f"models/{self.model_name}" not in [m.name for m in genai.list_models()]:
+                logging.error(f"⚠️ ADVERTENCIA: El modelo configurado '{self.model_name}' NO aparece en tu lista.")
+                logging.error(f"   Modelos disponibles: {available_models[:5]} ...")
+            # else: print(f"✅ Modelo '{self.model_name}' disponible y verificado.")
+            # print("----------------------------------------------------\n")
+        except Exception as e:
+            logging.error(f"Error verificando modelos: {e}")
 
-    except Exception as e:
-        print(f"Error listando modelos: {e}")
-        print("Continuando con la ejecución...\n")
-
-    # --- INICIO DEL PROGRAMA PRINCIPAL ---
-    p = DocumentProcessor()
-    
-    if os.path.exists("2509.01092v2.pdf"):
-         chunks = p.usual_process_pdf()
-    else:
-         print("⚠️ PDF no encontrado. Asegúrate de que el archivo existe.")
-         chunks = []
-
-    M = VectorStoreManager()
-    
-    if chunks:
-        rag_manager = RAGPipelines(vector_db=M.db, all_chunks=chunks)
+    def load_resources(self):
+        """Carga el PDF y prepara la base de datos vectorial."""
+        logging.debug("--> Iniciando carga de recursos...")
+        p = DocumentProcessor()
         
-        # 3. Pipelines
-        # get_baseline_pipeline
-        # get_bm25_pipeline
-        # get_dense_pipeline
-        chain_hybrid = rag_manager.get_dense_pipeline()
-        
-        # 4. Evaluar
-        if os.path.exists("ModelizaciónEmpresaUCMData.json"):
-            evaluator = Evaluator("ModelizaciónEmpresaUCMData.json")
-            score_hybrid, _ = evaluator.evaluate_pipeline(chain_hybrid, "Dense", limit=50)
+        if os.path.exists(self.pdf_path):
+             self.chunks = p.usual_process_pdf(self.pdf_path)
         else:
-            print("⚠️ Archivo JSON del dataset no encontrado.")
+             logging.error(f"⚠️ PDF no encontrado en {self.pdf_path}.")
+             self.chunks = []
+
+        # Inicializa Vector Store
+        M = VectorStoreManager()
+        if self.chunks:
+            # Si hay chunks, inicializamos el manager de pipelines
+            # Nota: VectorStoreManager ya maneja la persistencia, 
+            # así que no necesitamos re-insertar si ya existen, 
+            # pero RAGPipelines necesita los chunks para BM25.
+            M.add_documents(self.chunks)
+            self.rag_manager = RAGPipelines(vector_db=M.db, all_chunks=self.chunks, model_name=self.model_name)
+        else:
+            logging.error("❌ No se pudieron cargar chunks. No se puede iniciar el sistema RAG.")
+
+    def run(self, pipeline_type="baseline", limit=50):
+        """
+        Ejecuta la evaluación para el tipo de pipeline seleccionado.
+        Opciones: 'baseline', 'bm25', 'dense', 'hybrid'
+        """
+        if not self.rag_manager:
+            self.load_resources()
+            
+        if not self.rag_manager:
+            logging.error("❌ Error: RAG Manager no inicializado.")
+            return
+
+        # Selección del pipeline
+        match pipeline_type.lower():
+            case "baseline":
+                pipeline = self.rag_manager.get_baseline_pipeline()
+                name = "Baseline (Zero-shot)"
+            case "bm25":
+                pipeline = self.rag_manager.get_bm25_pipeline()
+                name = "BM25 RAG"
+            case "dense":
+                pipeline = self.rag_manager.get_dense_pipeline()
+                name = "Dense RAG"
+            case "hybrid":
+                pipeline = self.rag_manager.get_hybrid_pipeline()
+                name = "Hybrid RAG"
+            case _:
+                print(f"Tipo de pipeline '{pipeline_type}' no reconocido.")
+                return
+
+        # Evaluación
+        if os.path.exists(self.dataset_path):
+            evaluator = Evaluator(self.dataset_path)
+            score, results = evaluator.evaluate_pipeline(pipeline, name, limit=limit)
+            return score, results
+        else:
+            print(f"⚠️ Archivo JSON del dataset no encontrado en {self.dataset_path}.")
+            return 0
+
+if __name__ == "__main__":
+
+    logging.basicConfig(level=logging.INFO)
+
+    # Instanciamos el experimento
+    model = "gemini-2.5-flash" 
+    experiment = RAGExperiment(model_name=model)
+
+    # "baseline","bm25", "dense" o "hybrid"
+    acc, results = experiment.run(pipeline_type="dense", limit=5)
+    
+    [print(i) for i in results]
+    # Ejemplo para correr otro pipeline inmediatamente:
+    # experiment.run(pipeline_type="hybrid", limit=50)
