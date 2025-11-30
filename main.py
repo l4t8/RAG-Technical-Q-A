@@ -7,7 +7,8 @@ import re
 import time
 from typing import List, Optional
 import logging
-
+import pandas as pd
+from datetime import datetime
 
 
 # Importamos la librería oficial para listar modelos disponibles
@@ -43,7 +44,8 @@ CHROMA_PATH = "./chroma_db"
 EMBEDDING_MODEL = "all-MiniLM-L6-v2"
 PDF_PATH = "2509.01092v2.pdf"
 DATASET_PATH = "ModelizaciónEmpresaUCMData.json"
-GEMINI_MODEL = "gemini-2.5-flash" 
+GEMINI_MODEL = "gemini-2.0-flash-thinking-exp-01-21"
+DATAFRAME_PATH = GEMINI_MODEL + ".csv"
 
 class DocumentProcessor:
     """Handles loading and splitting of raw files."""
@@ -258,7 +260,7 @@ class Evaluator:
         return ", ".join(refs)
 
     def evaluate_pipeline(self, pipeline, pipeline_name, limit=None):
-        logging.info(f"\n{'='*60}")
+        logging.info(f"{'='*60}")
         logging.info(f"--- EVALUATING: {pipeline_name} ---")
         logging.info(f"{'='*60}")
         
@@ -311,7 +313,7 @@ class Evaluator:
                     logging.info(f"   🔎 Pool:   [{retrieved_str}]")
                 
                 results.append({
-                    "id": i,
+                    "question_number": i+1,
                     "pipeline": pipeline_name,
                     "correct": is_correct,
                     "predicted": predicted_answer,
@@ -361,7 +363,7 @@ class RAGExperiment:
             
             if self.model_name not in available_models and f"models/{self.model_name}" not in [m.name for m in genai.list_models()]:
                 logging.error(f"⚠️ ADVERTENCIA: El modelo configurado '{self.model_name}' NO aparece en tu lista.")
-                logging.error(f"   Modelos disponibles: {available_models[:5]} ...")
+                logging.error(f"   Modelos disponibles: {available_models} ...")
             # else: print(f"✅ Modelo '{self.model_name}' disponible y verificado.")
             # print("----------------------------------------------------\n")
         except Exception as e:
@@ -434,12 +436,52 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
 
     # Instanciamos el experimento
-    model = "gemini-2.5-flash" 
+    model = GEMINI_MODEL
+
+    """
+    'gemini-2.5-flash' best for processing huge loads
+    'gemini-2.5-pro' best for general reasoning
+    'gemini-2.0-flash-thinking-exp-01-21' best for hard logic
+    """
+
     experiment = RAGExperiment(model_name=model)
 
-    # "baseline","bm25", "dense" o "hybrid"
-    acc, results = experiment.run(pipeline_type="dense", limit=5)
-    
-    [print(i) for i in results]
-    # Ejemplo para correr otro pipeline inmediatamente:
-    # experiment.run(pipeline_type="hybrid", limit=50)
+    # "baseline","bm25", "dense", "hybrid"
+    pipelines_lst = [
+                     "baseline",
+                     "bm25", 
+                     "dense",
+                     "hybrid"
+                    ]
+
+    for pipeline_type in pipelines_lst:
+
+        acc, results = experiment.run(pipeline_type=pipeline_type, limit=50)
+
+        [logging.debug(i) for i in results]
+        # Ejemplo para correr otro pipeline inmediatamente:
+        # experiment.run(pipeline_type="hybrid", limit=50)
+
+        new_results = pd.DataFrame(results)
+
+        new_results['run_timestamp'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        if os.path.exists(DATAFRAME_PATH):
+            try:
+                existing_results = pd.read_csv(DATAFRAME_PATH)
+                global_results = pd.concat([existing_results, new_results], ignore_index=True)
+
+            except pd.errors.EmptyDataError:
+                global_results = new_results
+        else:
+            logging.info(f"🆕 Creating new master log: {DATAFRAME_PATH}")
+            global_results = new_results
+
+        # Drop exact duplicates to prevent spamming if you re-run the same code accidentally
+        # (We exclude timestamp from this check so re-running the exact same test later counts as new)
+        subset_cols = [c for c in new_results.columns if c != 'run_timestamp']
+        updated_df = new_results.drop_duplicates(subset=subset_cols)
+
+        global_results.to_csv(DATAFRAME_PATH, index=False)
+        logging.info(f"Global results updated. Total rows: {len(updated_df)}")
+
