@@ -44,7 +44,9 @@ CHROMA_PATH = "./chroma_db"
 EMBEDDING_MODEL = "all-MiniLM-L6-v2"
 PDF_PATH = "2509.01092v2.pdf"
 DATASET_PATH = "ModelizaciónEmpresaUCMData.json"
-GEMINI_MODEL = "gemini-2.0-flash-thinking-exp-01-21"
+GEMINI_MODEL = "gemini-2.5-pro"
+#GEMINI_MODEL = "gemini-2.5-flash"
+
 DATAFRAME_PATH = GEMINI_MODEL + ".csv"
 
 class DocumentProcessor:
@@ -97,7 +99,6 @@ class VectorStoreManager:
             print("Database deleted.")
         else:
             print("No database found to delete.")
-
 
 class RAGPipelines:
     """
@@ -331,6 +332,46 @@ class Evaluator:
         logging.info(f"\n>>> FINAL SCORE [{pipeline_name}]: Accuracy {accuracy:.2f}%")
         return accuracy, results
 
+    def source_atribution_accuracy(self, quote: str, source: str, model_name: str = GEMINI_MODEL) -> float:
+        """
+        Uses a powerful LLM (Judge) to verify if the quote is accurately extracted from the source.
+        Returns a Faithfulness Score (0.0 to 1.0) and a brief reasoning.
+        """
+        if not quote or quote.strip() in ["-", "No quote provided"]:
+            return 0.0, "No quote provided by the LLM."
+        
+        # We need a separate LLM instance for this specific check, 
+        # ensuring the prompt is simple and focused.
+        llm_judge = ChatGoogleGenerativeAI(model=model_name, temperature=0.1)
+
+        prompt = f"""
+        You are an independent auditor. Your task is to verify if the 'Quote' is an accurate, verbatim (or near-verbatim) extraction from the 'Source Text'.
+
+        Source Text: "{source}"
+        
+        Quote: "{quote}"
+        
+        Evaluate the faithfulness on a scale from 0.0 (Hallucinated/Unrelated) to 1.0 (Verbatim/Fully Supported).
+        
+        Return the output in the following JSON format:
+        {{
+            "faithfulness_score": 0.95,
+            "reasoning": "The quote is an exact sentence from the source."
+        }}
+        """
+        
+        try:
+            response = llm_judge.invoke(prompt)
+            data = json.loads(response.content.replace("```json", "").replace("```", "").strip())
+            
+            score = float(data.get("faithfulness_score", 0.0))
+            reasoning = data.get("reasoning", "No specific reasoning.")
+            return score, reasoning
+            
+        except Exception as e:
+            logging.error(f"Judge Error on quote: {e}")
+            return 0.0, f"Judge LLM Error: {e}"
+
 class RAGExperiment:
     """
     Clase principal que orquesta la configuración, chequeo de modelos
@@ -456,7 +497,7 @@ if __name__ == "__main__":
 
     for pipeline_type in pipelines_lst:
 
-        acc, results = experiment.run(pipeline_type=pipeline_type, limit=50)
+        acc, results = experiment.run(pipeline_type=pipeline_type, limit=70)
 
         [logging.debug(i) for i in results]
         # Ejemplo para correr otro pipeline inmediatamente:
