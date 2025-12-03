@@ -44,8 +44,8 @@ CHROMA_PATH = "./chroma_db"
 EMBEDDING_MODEL = "all-MiniLM-L6-v2"
 PDF_PATH = "2509.01092v2.pdf"
 DATASET_PATH = "ModelizaciónEmpresaUCMData.json"
-GEMINI_MODEL = "gemini-2.5-pro"
-#GEMINI_MODEL = "gemini-2.5-flash"
+#GEMINI_MODEL = "gemini-2.5-pro"
+GEMINI_MODEL = "gemini-2.5-flash"
 
 DATAFRAME_PATH = GEMINI_MODEL + ".csv"
 
