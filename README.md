@@ -1,123 +1,44 @@
-🧠 Sistema Experimental RAG: Análisis del Framework REFRAG
+# REFRAG Analysis Framework: Benchmarking RAG Strategies
 
-Este proyecto implementa un sistema de Retrieval-Augmented Generation (RAG) diseñado para analizar documentos técnicos complejos (específicamente el paper "REFRAG: Rethinking RAG based Decoding" de Meta) y evaluar diferentes estrategias de recuperación de información.
+**Q&A system implementation for the 2025-26 Concurso de Modelización de Empresa of Management Solutions (Facultad de Matemáticas, UCM).**
 
-El objetivo principal es comparar empíricamente cómo diferentes métodos de recuperación (Keyword, Semántico e Híbrido) impactan en la capacidad de un LLM para responder preguntas de opción múltiple con alta precisión.
+![Python](https://img.shields.io/badge/Python-3.11-blue) ![LangChain](https://img.shields.io/badge/Orchestration-LangChain_v0.2.16-green) ![Gemini](https://img.shields.io/badge/Model-Gemini%202.5%20Pro%20%2F%20Flash-orange)
 
-🚀 Características
+This repository hosts an experimental evaluation framework designed to empirically measure the performance of different Retrieval-Augmented Generation (RAG) architectures.
 
-Ingesta de Documentos: Procesamiento de PDFs técnicos utilizando PyPDFLoader y RecursiveCharacterTextSplitter para una segmentación inteligente.
+The project focuses on the ingestion and analysis of complex technical documentation (Case study: "REFRAG: Rethinking RAG based Decoding" by Meta). The fundamental objective is to quantify how different retrieval strategies—from lexical search to hybrid approaches—impact the accuracy, latency, and faithfulness of an LLM when answering domain-specific questions.
 
-Vector Store: Implementación persistente con ChromaDB.
+## Technical Architecture
 
-Modelos:
+The system is built in a modular fashion to allow for the hot-swapping of retrieval components and inference models.
 
-LLM: Google Gemini 1.5 Flash (vía langchain-google-genai).
+### Core Components
+* **Orchestration:** LangChain v0.2.16 (including `langchain-google-genai` and `langchain-huggingface`) for chain and prompt management.
+* **Ingestion & Chunking:** PDF processing using `PyPDFLoader` and recursive segmentation (`RecursiveCharacterTextSplitter`) to optimize the context window.
+* **Vector Storage:** Embedding persistence using ChromaDB.
+* **Models:**
+    * *Inference:* **Google Gemini 2.5** (Pro and Flash versions via API).
+    * *Embeddings:* `all-MiniLM-L6-v2` (HuggingFace) for efficient semantic representation.
 
-Embeddings: HuggingFace all-MiniLM-L6-v2.
+### Evaluation Pipelines
+The framework allows running and comparing four distinct strategies:
 
-Arquitectura Modular: Soporte para 4 pipelines de evaluación distintos:
+1.  **(A) Baseline (Zero-shot):** Direct evaluation of the LLM's parametric knowledge without retrieved context. Serves as a control baseline.
+2.  **(B) Sparse Retrieval (BM25):** Retrieval based on term frequency and exact keyword matching. Ideal for specific technical terminology.
+3.  **(C) Dense Retrieval:** Semantic search via cosine similarity in vector space.
+4.  **(D) Hybrid RAG (Ensemble):** Implementation of a hybrid retriever combining BM25 and Dense Retrieval to mitigate individual weaknesses.
 
-(A) Baseline: LLM sin contexto (Zero-shot).
+## Conclusions
 
-(B) BM25: Búsqueda basada en palabras clave (Keyword Search).
+It is important to note that this project relies on a free tier of the Google API; it is highly probable that all results would improve with a paid tier. Furthermore, the recorded latency times may not accurately reflect those of a production-scale environment.
 
-(C) Dense Retrieval: Búsqueda semántica por similitud vectorial.
+**Performance by Model (Flash vs. Pro)**
+Observations indicate that when using the **Flash model**, the performance gap between BM25 and Hybrid Retrieval is negligible, in contrast to the **Pro model** results. For scenarios prioritizing extreme speed and cost-efficiency, Hybrid Retrieval offers little advantage over the similar performance of BM25. However, with increased computational resources (Pro model), a significant divergence appears: Hybrid RAG outperforms BM25 RAG due to the synergistic effect of Dense Retrieval. While Dense Retrieval alone is inefficient and fails to surpass BM25, their combination achieves high precision across all metrics.
 
-(D) Hybrid RAG: Ensemble Retriever (BM25 + Dense) con pesos ajustables.
+**Metrics Analysis**
+Regarding **Source Attribution Accuracy**, Hybrid Retrieval represents a clear improvement for both models; choosing otherwise is suboptimal. Additionally, latency analysis reveals that Hybrid RAG achieves lower response times than both Dense and BM25 RAG for Pro and Flash models. Furthermore, the **Fuzz Score** strongly supports the adoption of Hybrid RAG. The fact that the hybrid model prevails in this lexical metric is a definitive argument: it demonstrates an ability to not only grasp semantic context but also respect exact terminology better than BM25 alone, effectively combining the best of both worlds.
 
-Evaluación Automatizada: Sistema de evaluación que compara las predicciones contra un ground truth en formato JSON, midiendo precisión y latencia.
+**The Role of BM25 and Dense Retrieval**
+In contrast to Hybrid RAG, the primary advantages of **BM25 RAG** lie in its low resource consumption and the lack of requirement for a vector store. While BM25 RAG might serve as a temporary solution for resource-constrained projects, it is difficult to envision a scenario where the computational cost of Hybrid RAG is not justified by the substantial improvement across all metrics.
 
-🛠️ Requisitos Previos
-
-Python 3.11+
-
-Conda (Recomendado para la gestión de entornos)
-
-Una API Key de Google AI Studio (para usar Gemini).
-
-📦 Instalación
-
-Clona el repositorio:
-
-git clone [https://github.com/tu-usuario/tu-repositorio.git](https://github.com/tu-usuario/tu-repositorio.git)
-cd tu-repositorio
-
-
-Configura el entorno:
-Hemos preparado un archivo environment.yml para una instalación limpia y compatible multiplataforma.
-
-conda env create -f environment.yml
-conda activate langchain_env
-
-
-Variables de Entorno:
-Crea un archivo .env en la raíz del proyecto y añade tu clave API:
-
-GOOGLE_API_KEY=tu_clave_api_aqui
-
-
-⚙️ Estructura del Proyecto
-
-├── chroma_db/                  # Base de datos vectorial (se genera automáticamente)
-├── rag_system.py               # Script principal (Lógica RAG y Evaluación)
-├── ModelizaciónEmpresaUCMData.json  # Dataset de preguntas y respuestas
-├── 2509.01092v2.pdf            # Paper de investigación (Input)
-├── environment.yml             # Dependencias del proyecto
-└── README.md                   # Documentación
-
-
-▶️ Uso
-
-El script principal gestiona tanto la ingesta de documentos como la evaluación.
-
-Ejecutar la evaluación:
-Por defecto, el script está configurado para evaluar el pipeline Híbrido.
-
-python rag_system.py
-
-
-Cambiar de Estrategia:
-Para probar otros métodos (BM25, Dense, Baseline), edita las líneas finales de rag_system.py:
-
-# En el bloque if __name__ == "__main__":
-
-# Para usar BM25:
-chain = rag_manager.get_bm25_pipeline()
-score, _ = evaluator.evaluate_pipeline(chain, "BM25 RAG")
-
-# Para usar Dense Retrieval:
-# chain = rag_manager.get_dense_pipeline()
-
-
-📊 Metodología de Evaluación
-
-El sistema utiliza un conjunto de datos (ModelizaciónEmpresaUCMData.json) que contiene preguntas difíciles de opción múltiple sobre el paper. El evaluador:
-
-Recupera el contexto relevante (o nada, en el caso del Baseline).
-
-Construye un prompt con instrucciones estrictas.
-
-Solicita al LLM la respuesta y la cita de la fuente.
-
-Compara la respuesta (A, B, C, D) con la correcta y calcula el Accuracy.
-
-📚 Tecnologías Utilizadas
-
-LangChain v0.2 - Orquestación de LLMs.
-
-Chroma - Base de datos vectorial open-source.
-
-Google Gemini API - Modelo Generativo.
-
-HuggingFace - Modelos de Embeddings.
-
-Rank-BM25 - Algoritmo de ranking probabilístico.
-
-📄 Referencia
-
-El documento analizado en este proyecto es:
-
-REFRAG: Rethinking RAG based Decoding (Meta SuperIntelligence Labs).
-
-Hecho con ❤️ usando Python y LangChain.
+Conversely, **Dense Retrieval** consistently underperforms compared to BM25 across all metrics. This is attributed to the dataset characteristics: the theoretical depth and highly specialized terminology heavily favor BM25's exact matching. While Dense Retrieval might excel as a "cheap and effective" method in literary datasets where depth relies on semantics rather than morphology, this is a niche case, especially since the marginal cost of upgrading from Dense to Hybrid is minimal.
